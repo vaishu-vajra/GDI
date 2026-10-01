@@ -18,6 +18,10 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.background import BackgroundScheduler
+from threading import Lock
+
 
 def clean_response(text: str) -> str:
     """Remove Markdown formatting markers from Gemini's answer."""
@@ -30,7 +34,49 @@ def clean_response(text: str) -> str:
 # APP
 # ============================================================
 
-app = FastAPI(title="FinSight Backend")
+scheduler = BackgroundScheduler()
+SYNC_LOCK = Lock()
+
+
+def scheduled_drive_sync():
+    """Run the hourly sync without overlapping a manual sync."""
+    if not SYNC_LOCK.acquire(blocking=False):
+        print("Scheduled Drive sync skipped: another sync is already running.")
+        return
+
+    try:
+        print("Starting scheduled Google Drive sync...")
+        results = sync_and_index_documents()
+        print(f"Scheduled Google Drive sync finished: {results}")
+    except Exception as e:
+        print(f"Scheduled Google Drive sync failed: {e}")
+    finally:
+        SYNC_LOCK.release()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler.add_job(
+        scheduled_drive_sync,
+        trigger="interval",
+        hours=1,
+        id="hourly_drive_sync",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    scheduler.start()
+    print("FinSight hourly Google Drive sync scheduler started.")
+
+    yield
+
+    scheduler.shutdown()
+    print("FinSight scheduler stopped.")
+
+app = FastAPI(
+    title="FinSight Backend",
+    lifespan=lifespan,
+)
 
 
 app.add_middleware(
@@ -886,8 +932,13 @@ def connect_google_drive():
 @app.post("/drive/sync")
 def sync_google_drive():
 
-    try:
+    if not SYNC_LOCK.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail="A Google Drive sync is already running. Please try again shortly."
+        )
 
+    try:
         results = sync_and_index_documents()
 
         return {
@@ -896,15 +947,14 @@ def sync_google_drive():
         }
 
     except Exception as e:
-
-        print(
-            f"Google Drive sync failed: {e}"
-        )
+        print(f"Google Drive sync failed: {e}")
 
         raise HTTPException(
             status_code=500,
             detail=str(e)
         )
+    finally:
+        SYNC_LOCK.release()
 
 
 # ============================================================
