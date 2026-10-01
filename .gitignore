@@ -41,3 +41,13 @@ backend/__pycache__/
 *.njsproj
 *.sln
 *.sw?
+token.json
+
+
+# Google OAuth credentials
+backend/credentials.json
+backend/token.json
+
+# Local database and generated knowledge
+backend/finsight.db
+backend/knowledge.json
