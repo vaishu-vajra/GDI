@@ -1157,6 +1157,10 @@ def delete_document(filename: str):
 # ASK GEMINI USING STORED KNOWLEDGE
 # ============================================================
 
+# ============================================================
+# ASK GEMINI USING STORED KNOWLEDGE
+# ============================================================
+
 @app.post("/ask")
 async def ask_gemini(
     request: AskRequest
@@ -1165,14 +1169,12 @@ async def ask_gemini(
     question = request.question.strip()
 
     if not question:
-
         raise HTTPException(
             status_code=400,
             detail="Please enter a question."
         )
 
     if not client:
-
         raise HTTPException(
             status_code=500,
             detail="Gemini API key is not configured."
@@ -1180,20 +1182,15 @@ async def ask_gemini(
 
     # --------------------------------------------------------
     # IMPORTANT:
-    #
     # We DO NOT sync Google Drive here.
-    #
     # We DO NOT download PDFs here.
-    #
     # We DO NOT read PDFs here.
-    #
     # We only use the knowledge already created during sync.
     # --------------------------------------------------------
 
     stored_documents = get_stored_knowledge()
 
     if not stored_documents:
-
         raise HTTPException(
             status_code=404,
             detail=(
@@ -1208,9 +1205,7 @@ async def ask_gemini(
 
         knowledge_sections.append(
             f"""
-============================================================
 DOCUMENT: {document["file_name"]}
-============================================================
 
 {document["knowledge"]}
 """
@@ -1221,30 +1216,51 @@ DOCUMENT: {document["file_name"]}
     )
 
     # --------------------------------------------------------
-    # Gemini receives the structured knowledge,
-    # NOT the original PDFs.
+    # Gemini receives stored knowledge, NOT original PDFs.
+    # Gemini returns structured JSON.
+    # Python controls the final response format.
     # --------------------------------------------------------
 
     prompt = f"""
-You are FinSight, a financial document analysis assistant.
+You are FinSight, a financial research chatbot.
 
-The company documents were previously processed and converted
-into structured knowledge.
+Use ONLY the stored company knowledge to answer the user's question.
 
-Use ONLY the stored knowledge below to answer the user's
-question.
+Return ONLY valid JSON in exactly this format:
 
-IMPORTANT:
+{{
+  "company": "Company name",
+  "summary": "One short sentence describing the company and its current financial situation.",
+  "financials": [
+    "Important financial fact",
+    "Important financial fact"
+  ],
+  "good": [
+    "Short positive point",
+    "Short positive point"
+  ],
+  "risks": [
+    "Short risk",
+    "Short risk"
+  ],
+  "bottom_line": "One short neutral takeaway."
+}}
 
-- Do not use outside knowledge.
+Rules:
+- Be extremely concise.
+- summary: maximum 20 words.
+- financials: maximum 2 items.
+- good: maximum 2 items.
+- risks: maximum 2 items.
+- bottom_line: maximum 20 words.
+- Do not give Buy, Sell, or Hold advice.
+- Do not say "I cannot provide investment advice".
+- Do not add disclaimers.
+- Do not add sources.
+- Do not repeat information.
 - Do not invent information.
-- Preserve financial figures accurately.
-- Preserve units and reporting periods.
-- If information is missing, say that it is not available.
-- If comparing companies, use only the companies represented
-  in the stored knowledge.
-- Mention the source document when useful.
-- Give a clear and direct answer.
+- Use only information from the stored knowledge.
+- If a financial value is unavailable, do not invent it.
 
 STORED COMPANY KNOWLEDGE:
 
@@ -1253,8 +1269,6 @@ STORED COMPANY KNOWLEDGE:
 USER QUESTION:
 
 {question}
-
-ANSWER:
 """
 
     try:
@@ -1264,11 +1278,123 @@ ANSWER:
             contents=prompt
         )
 
-        answer = clean_response(response.text or "")
+        raw_answer = response.text.strip()
+
+        # ----------------------------------------------------
+        # Remove accidental markdown code fences if Gemini
+        # returns ```json ... ```
+        # ----------------------------------------------------
+
+        raw_answer = re.sub(
+            r"^```json\s*|\s*```$",
+            "",
+            raw_answer,
+            flags=re.IGNORECASE
+        ).strip()
+
+        # ----------------------------------------------------
+        # Parse Gemini JSON
+        # ----------------------------------------------------
+
+        result = json.loads(raw_answer)
+
+        company = result.get(
+            "company",
+            "Company"
+        )
+
+        summary = result.get(
+            "summary",
+            ""
+        )
+
+        financials = result.get(
+            "financials",
+            []
+        )
+
+        good = result.get(
+            "good",
+            []
+        )
+
+        risks = result.get(
+            "risks",
+            []
+        )
+
+        bottom_line = result.get(
+            "bottom_line",
+            ""
+        )
+
+        # ----------------------------------------------------
+        # Build clean response ourselves.
+        # Gemini does NOT control the final format.
+        # ----------------------------------------------------
+
+        answer_parts = [
+            f"**{company}**",
+            "",
+            summary
+        ]
+
+        if financials:
+            answer_parts.extend([
+                "",
+                "**Financials**"
+            ])
+
+            for item in financials[:2]:
+                answer_parts.append(
+                    f"• {item}"
+                )
+
+        if good:
+            answer_parts.extend([
+                "",
+                "**Good**"
+            ])
+
+            for item in good[:2]:
+                answer_parts.append(
+                    f"• {item}"
+                )
+
+        if risks:
+            answer_parts.extend([
+                "",
+                "**Risks**"
+            ])
+
+            for item in risks[:2]:
+                answer_parts.append(
+                    f"• {item}"
+                )
+
+        if bottom_line:
+            answer_parts.extend([
+                "",
+                "**Bottom line**",
+                bottom_line
+            ])
+
+        answer = "\n".join(answer_parts)
 
         return {
             "answer": answer
         }
+
+    except json.JSONDecodeError:
+
+        print(
+            "Gemini returned invalid JSON."
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Gemini returned an invalid response format."
+        )
 
     except Exception as e:
 
@@ -1301,8 +1427,6 @@ ANSWER:
             status_code=500,
             detail="Gemini request failed."
         )
-
-
 # ============================================================
 # RUN
 # ============================================================
