@@ -2,6 +2,10 @@ import os
 import json
 import re
 import sqlite3
+
+from dotenv import load_dotenv
+load_dotenv()
+
 from pathlib import Path
 from datetime import datetime, timezone
 
