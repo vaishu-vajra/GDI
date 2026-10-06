@@ -990,6 +990,48 @@ def knowledge_status():
     }
 
 
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+@app.get("/dashboard")
+def get_dashboard():
+
+    connection = get_db_connection()
+
+    rows = connection.execute(
+        """
+        SELECT
+            file_name,
+            mime_type,
+            modified_time,
+            knowledge,
+            processed_at
+        FROM documents
+        ORDER BY file_name
+        """
+    ).fetchall()
+
+    connection.close()
+
+    companies = []
+
+    for row in rows:
+        companies.append({
+            "file_name": row["file_name"],
+            "mime_type": row["mime_type"],
+            "modified_time": row["modified_time"],
+            "knowledge": row["knowledge"],
+            "processed_at": row["processed_at"]
+        })
+
+    return {
+        "document_count": len(companies),
+        "documents": companies
+    }
+
 # ============================================================
 # OLD LOCAL UPLOAD
 # ============================================================
