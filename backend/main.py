@@ -100,8 +100,17 @@ app.add_middleware(
 BASE_DIR = Path(__file__).resolve().parent
 
 UPLOAD_DIR = BASE_DIR / "uploads"
-CREDENTIALS_FILE = Path("/etc/secrets/credentials.json")
-TOKEN_FILE = Path("/etc/secrets/token.json")
+CREDENTIALS_FILE = (
+    Path("/etc/secrets/credentials.json")
+    if Path("/etc/secrets/credentials.json").exists()
+    else BASE_DIR / "credentials.json"
+)
+
+TOKEN_FILE = (
+    Path("/etc/secrets/token.json")
+    if Path("/etc/secrets/token.json").exists()
+    else BASE_DIR / "token.json"
+)
 
 # Database that remembers which Drive documents
 # have already been processed.
@@ -231,7 +240,6 @@ def save_knowledge_store(documents):
 def get_drive_service():
 
     if not CREDENTIALS_FILE.exists():
-
         raise HTTPException(
             status_code=500,
             detail="Google Drive credentials.json not found."
@@ -253,15 +261,11 @@ def get_drive_service():
         )
 
     # --------------------------------------------------------
-    # First-time Google login
+    # Refresh existing token
     # --------------------------------------------------------
+
     if credentials and credentials.expired and credentials.refresh_token:
         credentials.refresh(Request())
-
-        TOKEN_FILE.write_text(
-            credentials.to_json(),
-            encoding="utf-8"
-        )
 
     elif not credentials or not credentials.valid:
         raise HTTPException(
@@ -269,11 +273,15 @@ def get_drive_service():
             detail="Google Drive token is invalid or missing refresh token."
         )
 
-        service = build(
-            "drive",
-            "v3",
-            credentials=credentials
-        )
+    # --------------------------------------------------------
+    # Create Google Drive service
+    # --------------------------------------------------------
+
+    service = build(
+        "drive",
+        "v3",
+        credentials=credentials
+    )
 
     return service
 
