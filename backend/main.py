@@ -99,8 +99,8 @@ app.add_middleware(
 BASE_DIR = Path(__file__).resolve().parent
 
 UPLOAD_DIR = BASE_DIR / "uploads"
-CREDENTIALS_FILE = BASE_DIR / "credentials.json"
-TOKEN_FILE = BASE_DIR / "token.json"
+CREDENTIALS_FILE = Path("/etc/secrets/credentials.json")
+TOKEN_FILE = Path("/etc/secrets/token.json")
 
 # Database that remembers which Drive documents
 # have already been processed.
