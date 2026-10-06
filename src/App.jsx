@@ -1,7 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
 
-const API_URL = "http://127.0.0.1:8000";
+// ============================================================
+// BACKEND API
+// ============================================================
+
+// LOCAL:
+// const API_URL = "http://127.0.0.1:8000";
+
+// RENDER:
+// Replace this with your actual FastAPI Render URL.
+const API_URL = "https://gdi-2-backend.onrender.com";
 
 function App() {
   const [question, setQuestion] = useState("");
