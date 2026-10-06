@@ -25,6 +25,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 from threading import Lock
+from google.auth.transport.requests import Request
 
 
 def clean_response(text: str) -> str:
@@ -254,28 +255,25 @@ def get_drive_service():
     # --------------------------------------------------------
     # First-time Google login
     # --------------------------------------------------------
-
-    if not credentials or not credentials.valid:
-
-        flow = InstalledAppFlow.from_client_secrets_file(
-            str(CREDENTIALS_FILE),
-            SCOPES
-        )
-
-        credentials = flow.run_local_server(
-            port=0
-        )
+    if credentials and credentials.expired and credentials.refresh_token:
+        credentials.refresh(Request())
 
         TOKEN_FILE.write_text(
             credentials.to_json(),
             encoding="utf-8"
         )
 
-    service = build(
-        "drive",
-        "v3",
-        credentials=credentials
-    )
+    elif not credentials or not credentials.valid:
+        raise HTTPException(
+            status_code=500,
+            detail="Google Drive token is invalid or missing refresh token."
+        )
+
+        service = build(
+            "drive",
+            "v3",
+            credentials=credentials
+        )
 
     return service
 
